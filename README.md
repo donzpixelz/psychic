@@ -47,7 +47,8 @@ CREATE INDEX PCD7 ON geo(PCD7);
 
 5) Setup psych.db
 
-CREATE TABLE qa (userid integer, dataset varchar(255), dataitem varchar(255), detail varchar(255), answered integer, asked_last integer, answer varchar(255));
+CREATE TABLE qa (userid integer, dataset varchar(255), dataitem varchar(255), detail varchar(255), answered integer, asked_last integer, answer varchar(255), PRIMARY KEY (userid, dataset, dataitem, detail));
+
 CREATE TABLE sessions (user integer primary key autoincrement, sessionid varchar(255));
 CREATE TABLE conversation_state (sessionid varchar(255) primary key, state integer);
 ----------------------

@@ -13,7 +13,7 @@ class DuplicateFeatureException(Exception):
         return repr(self.value)
 
 
-def distribute_probs(p,j,spread=False):
+def distribute_probs(p,j,spread=False): #TODO: THIS SHOULD BE MOVED
     """Distributes age probabilities.
     
     Distributes discrete age probabilities over the "more" continuous
@@ -96,7 +96,22 @@ class Answer(object):
         """
         pass
     
-    def append_features(self,features):
+    def append_facts(self,facts):
+        """Alters the facts dictionary in place, adding facts associated with
+        this instance.
+
+        Args:
+          facts (dictionary): Dictionary of facts.
+        
+        Returns:
+          Nothing - the dictionary is altered inplace.
+          
+        Raises:
+          DuplicateFeatureException: If an identically named fact already exists that clashes with this instance
+        """
+        pass
+    
+    def append_features(self,features,facts):
         """Alters the features dictionary in place, adding features associated with
         this instance.
 
@@ -109,7 +124,8 @@ class Answer(object):
 
         Args:
           features (dictionary): Dictionary of pyMC probability distributions.
-        
+          facts (dictionary): should already be populated with facts
+
         Returns:
           Nothing - the dictionary is altered inplace.
           
@@ -118,51 +134,12 @@ class Answer(object):
         """
         pass
 
+    @classmethod
+    def pick_question(self):
+        return 'None', 'None' 
+#None = no question to ask the user, but we still want to call it before inference
+#Skip = no question to ask user, and we want to skip it when calling inference: It gets called separately (e.g. when jquery gets facebook info, etc)
 
-#overall method to instantiate and recover the question for user 'userid'
-def get_last_question_string(cur,userid):
-    cur.execute('SELECT dataset, dataitem, detail FROM qa WHERE userid=? AND asked_last = 1;',(userid,));
-    data = cur.fetchone();  
-    if (data==None):
-         #not found
-        return "Can't remember what I was asking...";
-    dataset = data[0]
-    dataitem = data[1]
-    detail = data[2]    
-    c = [cls for cls in Answer.__subclasses__() if cls.dataset==dataset]
-    if len(c)==0:
-        return "Don't know this type of data";
-    d = c[0]('temp',dataitem,detail)
-    return d.question_to_text()
+#Nones are not handled well when put into the database, using string instread
 
-def do_inference(cur,userid,feature):
-    results = cur.execute('SELECT dataset, dataitem, detail, answer FROM qa WHERE userid=?;',(userid,));
-    features = dict()
-    answers = []
-    tempiterator = 0
-    for data in results:
-        tempiterator += 1
-   #     print data
-        dataset = data[0]
-        dataitem = data[1]
-        detail = data[2]
-        answer = data[3]
-        if ((answer==None) or (len(answer)<2)):
-            continue;
-        c = [cls for cls in Answer.__subclasses__() if cls.dataset==dataset]
-        if len(c)==0:
-            return "Don't know this type of data";
-        name = "%s_%s_%s_%s" % (dataset,dataitem,str(detail),str(answer));
-        name = "item%d" % tempiterator
-        answers.append(c[0](name,dataitem,detail,answer))
-    for a in answers:
-        a.append_features(features)
 
-    model = pm.Model(features)
-    mcmc = pm.MCMC(model)
-    mcmc.sample(2000,200,3,progress_bar=False)
-    trc = mcmc.trace(features['factor_age'])[:]
-    trc.sort();
-    minage = trc[int(len(trc)*0.25)]
-    maxage = trc[int(len(trc)*0.75)]
-    return (minage,maxage)

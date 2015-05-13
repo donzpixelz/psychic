@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 import urllib2
 import sqlite3
 import answer as ans
+import random
 
 from StringIO import StringIO
 from zipfile import ZipFile
@@ -75,7 +76,7 @@ class MovieAnswer(ans.Answer):
             c_all = MovieAnswer._movielens.execute("SELECT users.age,count(*) FROM users JOIN ratings ON users.user=ratings.user WHERE users.gender=? GROUP BY users.age ORDER BY users.age;",(gender));
             for r in c_all:
                 p[ages[r[0]]] = 1.*p[ages[r[0]]]/r[1]
-            p = np.array([0,0,0,0,0,0]);
+            p = np.array([0,0,0,0,0,0]);#TODO:!WHAT IS THIS DOING HERE?!!?!!!! TO FIX!
             d = ans.distribute_probs(p,np.array([18,25,35,45,50,56]))
             self.probs[:,genderi,0] = d
             self.probs[:,genderi,1] = 1-d #TODO! WARNING ARE THESE THE RIGHT WAY 'ROUND?
@@ -99,7 +100,7 @@ class MovieAnswer(ans.Answer):
             return pSeen_AgeGender[age][gender]
         return seenGivenAgeGender
     
-    def append_features(self,features): 
+    def append_features(self,features,facts): 
         """Alters the features dictionary in place, adds:
          - age
          - gender
@@ -123,4 +124,19 @@ class MovieAnswer(ans.Answer):
         if self.featurename in features:
             raise DuplicateFeatureException('The "%s" feature is already in the feature list.' % self.featurename);
         features[self.featurename]=pm.Categorical(self.featurename, self.get_pymc_function(features), value=True, observed=True)
+
+    @classmethod
+    def pick_question(self):
+        #temporary list of films I'VE seen!
+        films = [(2541, 'Cruel Intentions (1999)'),
+         (969, 'African Queen, The (1951)'),
+         (1200, 'Aliens (1986)'),
+         (1704, 'Good Will Hunting (1997)'),
+         (3006, 'Insider, The (1999)'),
+         (2470, 'Crocodile Dundee (1986)'),
+         (3704, 'Mad Max Beyond Thunderdome (1985)')];
+        filmn = random.randint(0,len(films)-1);
+        movie_index = films[filmn][0];
+        movie_name = films[filmn][1];
+        return 'seen',movie_index;
 

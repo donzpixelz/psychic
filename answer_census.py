@@ -35,7 +35,9 @@ class CensusAnswer(ans.Answer):
     def adjustcode(cls,postcode):
         """Formats postcode into 7 character format, so "a1 2cd" becomes "A1  2CD" or "Gl54 1AB" becomes "GL541AB"."""
         postcode = postcode.upper()
-        res = re.search('([A-Z]{1,2}[0-9]{1,2}) *([0-9][A-Z]{2})',postcode);        
+        res = re.search('([A-Z]{1,2}[0-9]{1,2}) *([0-9][A-Z]{2})',postcode);
+        if (res==None):
+            return postcode #TODO can't understand it, just send it back, need to do something better, throw an exception?
         groups = res.groups()
         if len(groups)==2:
             first = groups[0]
@@ -64,10 +66,11 @@ class CensusAnswer(ans.Answer):
         for filename in zipfile.namelist():
             if (filename[-3:]=='csv'):
                 data = pd.read_csv(zipfile.open(filename),skiprows=np.append(np.array(range(8)),10))
-               # print filename
+           #     print filename
                 #print zipfile.open(filename).read()
                 
         data = data.T
+    #    print data
         popages = data[0].values[3:]
        # return popages
         returnList[0] = popages #now return via the argument so this can be called as a thread
@@ -94,15 +97,19 @@ class CensusAnswer(ans.Answer):
         
     def calc_probs(self):
         self.probs = np.zeros([101,2]) #age, in or not in the output area
+
         if (self.answer==None):
-            answer = 'K04000001'; #somewhere in England/Wales we assume! TODO
-        postcode = CensusAnswer.adjustcode(self.answer);
+            postcode = 'K04000001'; #somewhere in England/Wales we assume! TODO
+        else:
+            postcode = CensusAnswer.adjustcode(self.answer);
         c_oa = CensusAnswer._geo.execute("SELECT OA11CD FROM geo WHERE PCD7=?;",(postcode,));
+        oa = 'K04000001'; #use England/wales if we don't know it.
         for r in c_oa:
             oa = r[0]
 
         from threading import Thread
         tempA = [0]
+#        print oa
         dA = Thread(target=CensusAnswer.getAgeDist,args=(oa,tempA))
         dA.start()
         tempB = [0]
@@ -163,7 +170,7 @@ class CensusAnswer(ans.Answer):
             return pSeen_AgeGender[age]
         return seenGivenAgeGender
     
-    def append_features(self,features): 
+    def append_features(self,features,facts): 
         """Alters the features dictionary in place, adds:
          - age
          - gender
@@ -183,3 +190,8 @@ class CensusAnswer(ans.Answer):
         if self.featurename in features:
             raise DuplicateFeatureException('The "%s" feature is already in the feature list.' % self.featurename);
         features[self.featurename]=pm.Categorical(self.featurename, self.get_pymc_function(features), value=True, observed=True)
+ 
+    @classmethod
+    def pick_question(self):
+	    return 'postcode', ''
+

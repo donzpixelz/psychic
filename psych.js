@@ -13,12 +13,24 @@ function replymsg() {
     });
 }
 
+function sendfacebook(data) {
+    $.ajax({
+	method: "GET",
+	url: "index.cgi?facebook=on",
+	data: {reply:data}
+    })
+    .done(function( msg ) {
+    //  alert(msg);
+    //  $('span#conversation').append(msg); //temporary - don't usually want to display the reply to this.
+    });
+}
+
 $(document).ready(function() {
  replymsg();
  $('button#reply').click(function() {replymsg();});
 });
 
-
+$(document).ready(function() {
 /*--------Facebook connection code------*/
 window.fbAsyncInit = function() {
 	FB.init({
@@ -34,10 +46,12 @@ window.fbAsyncInit = function() {
 				welcomeBlock.innerHTML = 'Hello, ' + data.first_name + '!';
 	    		});
 			FB.api('/me', function(data) {
-				console.log(data);
+				    sendfacebook(data);
 	    		});
 	  	}
 	}
+//see https://developers.facebook.com/docs/reference/fql/permissions
+//see https://developers.facebook.com/docs/graph-api/reference/user
 
 	FB.getLoginStatus(function(response) {
 		// Check login status on load, and if the user is
@@ -48,7 +62,7 @@ window.fbAsyncInit = function() {
 	    	// Otherwise, show Login dialog first.
 		  	FB.login(function(response) {
 		 		onLogin(response);
-		 	}, {scope: 'user_friends, email'});
+		 	}, {scope: 'user_friends, email, user_birthday, user_about_me, user_likes, user_photos'});
 		}
 	});
   };
@@ -61,3 +75,4 @@ window.fbAsyncInit = function() {
      fjs.parentNode.insertBefore(js, fjs);
    }(document, 'script', 'facebook-jssdk'));
 /*--------------------------------------*/
+});
