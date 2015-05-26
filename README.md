@@ -53,3 +53,7 @@ CREATE TABLE sessions (user integer primary key autoincrement, sessionid varchar
 CREATE TABLE conversation_state (sessionid varchar(255) primary key, state integer);
 ----------------------
 
+Install python modules:
+- wget
+- numpy
+- TODO
