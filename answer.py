@@ -71,6 +71,17 @@ class Answer(object):
       seen - whether a film's been seen (true or false)
       rating - the integer rating given to a film (between 0 and 5).
     """
+
+    @classmethod
+    def init_db(cls):
+        """Initialises database connection, etc"""
+        pass
+
+    @classmethod
+    def setup(cls,pathToData):
+        """Creates databases and files, downloads data, and populates the datafiles"""
+        pass
+
     def __init__(self,name,dataitem,detail,answer=None):
         """Constructor method for base class: does nothing."""
         pass
@@ -96,12 +107,13 @@ class Answer(object):
         """
         pass
     
-    def append_facts(self,facts):
+    def append_facts(self,facts,all_answers):
         """Alters the facts dictionary in place, adding facts associated with
         this instance.
 
         Args:
           facts (dictionary): Dictionary of facts.
+          all_answers: array of all the instantiated answers
         
         Returns:
           Nothing - the dictionary is altered inplace.
@@ -142,4 +154,8 @@ class Answer(object):
 
 #Nones are not handled well when put into the database, using string instread
 
-
+#TODO: Not currently used - delete?
+    @classmethod
+    def process_answer(cls, dataitem, detail, answer):
+        #this function may alter an answer or the details of the question to provide additional information, or reformat it into a standard format.
+        return answer, detail;

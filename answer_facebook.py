@@ -15,6 +15,11 @@ class FacebookAnswer(ans.Answer):
     """Facebook answer: handles facebook reply"""
     dataset = 'facebook';
 
+    @classmethod
+    def init_db(cls):
+        pass
+
+
     def __init__(self,name,dataitem,itemdetails,answer=None):
         """Constructor, instantiate an answer associated with seeing a movie.
 
@@ -30,9 +35,12 @@ class FacebookAnswer(ans.Answer):
         self.answer = answer
         if ((answer==None) or (len(answer)<2)):
             return
-        self.data = json.loads(answer)
+        try:
+            self.data = json.loads(answer)
+        except ValueError: #TODO: Somehow more than one facebook instance is created - one doesn't get its 'answer' populated, and this handles that situation.
+            self.data = {} #we don't seem to have got the info from facebook
 
-    def append_facts(self,facts):
+    def append_facts(self,facts,all_answers):
         if ((self.answer==None) or (len(self.answer)<2)):
             return #don't do anything
 
@@ -41,13 +49,12 @@ class FacebookAnswer(ans.Answer):
         - dob
         - ...
         """
-#       print "FACEBOOK"
-#       print self.data
+
         if ('reply[birthday]' in self.data):
             facts['dob'] = self.data['reply[birthday]'] #TODO: Turn from string to meaningful date
         if ('reply[first_name]' in self.data):
             facts['first_name'] = self.data['reply[first_name]']
 
     @classmethod
-    def pick_question(self):
+    def pick_question(self,questions_asked):
         return 'Skip', 'None'       #we don't want to ask questions to get this data

@@ -3,10 +3,13 @@ import numpy as np
 import pandas as pd
 import re
 import xml.etree.ElementTree as ET
-import urllib2
+import urllib2,urllib
 import sqlite3
 import answer as ans
 import random
+import zipfile,os.path,os
+import sqlalchemy as sa
+import pandas as pd
 
 from StringIO import StringIO
 from zipfile import ZipFile
@@ -19,8 +22,39 @@ class MovieAnswer(ans.Answer):
     _movielens = None
     dataset = 'movielens';
     
+
     @classmethod
-    def _init_db(cls):
+    def setup(cls,pathToData):
+        """Creates databases and files, downloads data, and populates the datafiles"""
+        url = 'http://files.grouplens.org/datasets/movielens/ml-1m.zip'
+
+        if not os.path.isfile("/tmp/psych_movielens/ml-1m.zip"):
+            print "Downloading "+url
+            if not os.path.exists('/tmp/psych_movielens'):
+                os.makedirs('/tmp/psych_movielens')
+            urllib.urlretrieve(url, "/tmp/psych_movielens/ml-1m.zip")
+            movielens_zipfile = "/tmp/psych_movielens/ml-1m.zip"
+            print "Opening movielens zip file"
+            zf = zipfile.ZipFile(movielens_zipfile)
+            for f in zf.infolist():
+                zf.extractall("/tmp/psych_movielens/")
+
+        if not os.path.isfile(pathToData+'movielens.db'):
+            print "Saving movielens data to movielens.db"
+            ratings = pd.read_table('/tmp/psych_movielens/ml-1m/ratings.dat',sep='::',names=['user','movie','rating','time'],encoding='utf-8');
+            users = pd.read_table('/tmp/psych_movielens/ml-1m/users.dat',sep='::',names=['user','gender','age','occupation','zip'],encoding='utf-8');
+            movies = pd.read_table('/tmp/psych_movielens/ml-1m/movies.dat',sep='::',names=['movie','title','genre'],encoding='utf-8');
+            db = sa.create_engine('sqlite:///'+pathToData+'movielens.db');
+            con = db.raw_connection(); #need raw connect to allow access to rollback, see: http://stackoverflow.com/questions/20401392/read-frame-with-sqlalchemy-mysql-and-pandas
+            con.connection.text_factory = str;
+            ratings.to_sql('ratings',con,index=False,if_exists='replace');
+            users.to_sql('users',con,index=False,if_exists='replace');
+            movies.to_sql('movies',con,index=False,if_exists='replace');
+            con.close();
+
+
+    @classmethod
+    def init_db(cls):
         """Connect to movielens database
 
         Note:
@@ -47,7 +81,7 @@ class MovieAnswer(ans.Answer):
           movie: The id of the movie (for ids see movielens database)
           answer (default None): Either bool (if dataitem is 'seen') or integer (if dataitem is 'rated')
         """
-        MovieAnswer._init_db()
+        MovieAnswer.init_db()
         self.dataitem = dataitem
         self.movie = movie
         self.answer = answer
@@ -123,10 +157,10 @@ class MovieAnswer(ans.Answer):
             features['factor_gender'] = pm.Categorical('factor_gender',np.array([0.5,0.5]));
         if self.featurename in features:
             raise DuplicateFeatureException('The "%s" feature is already in the feature list.' % self.featurename);
-        features[self.featurename]=pm.Categorical(self.featurename, self.get_pymc_function(features), value=True, observed=True)
+        features[self.featurename]=pm.Categorical(self.featurename, self.get_pymc_function(features), value=True, observed=True)#UHOH WE DON'T SEEM TO BE USING THE ACTUAL VALUE!
 
     @classmethod
-    def pick_question(self):
+    def pick_question(self,questions_asked):
         #temporary list of films I'VE seen!
         films = [(2541, 'Cruel Intentions (1999)'),
          (969, 'African Queen, The (1951)'),

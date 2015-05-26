@@ -1,0 +1,1 @@
+pathToData = '../../cgi-data/';
