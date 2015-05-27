@@ -81,6 +81,23 @@ def process_ajax():
         else:
             msg = msg + 'I don\'t know if you\'re male or female';
 
+
+        rel = mcmc.trace('religion')[:]
+        from answer_census import CensusAnswer
+        listOfReligions = []
+        import numpy as np
+        for i,r in enumerate(CensusAnswer.religion_text):
+            if (np.mean(rel==i)>0.17):
+                listOfReligions.append(r)
+        if (len(listOfReligions)>1):
+            relmsg = ', '.join(listOfReligions[:-1]) + ' or ' + listOfReligions[-1]
+        else:
+            relmsg = listOfReligions[0]
+        msg = msg + " I think you are " + relmsg
+        
+
+
+
         whf.set_conversation_state(con,sid,2)
     if (state==2):
         msg = "We're done."
@@ -120,8 +137,8 @@ if ('ajax' in form):
 #	run_inference()
 elif ('facebook' in form):
     process_facebook()
-#elif ('setup' in form): #If setup is passed, then we download all the stuff the site might need.
-#    ohf.setupdatabase(con) ##just run this seperately
+elif ('setup' in form): #If setup is passed, then we download all the stuff the site might need.
+    ohf.setupdatabase(con)
 else:
 	gen_main_form()
 

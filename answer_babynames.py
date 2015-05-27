@@ -69,6 +69,7 @@ class BabyNamesAnswer(ans.Answer):
         #There are three sets of data that are used
         #- historic ranks of the top 100 names for each decade
         #- recent counts of names for each year (since 1996)
+        #- contractions of people's names (from wikipedia)
 
         #1. download historic data and put into a pandas dataframe
         print "Downloading historic dataset"

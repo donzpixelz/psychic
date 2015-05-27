@@ -305,8 +305,11 @@ class WhereAnswer(ans.Answer):
         thresh = 0.0001
         if (np.sum(ps>thresh)>10) or (np.sum(ps>thresh)<1):
             temp = ps[:]
-            temp.sort()
-            thresh = temp[-10]
+            if (len(temp)>10):
+                temp.sort()
+                thresh = temp[-10]
+            else:
+                thresh = 0 #include all of the OAs
 
         recs = recs[ps>thresh]
         rs = [r[0] for r in recs]
