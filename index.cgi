@@ -10,11 +10,11 @@ import cgi
 import web_helper_functions as whf
 import answer
 import other_helper_functions as ohf
-
+import config
 
 #connect to database
 
-con = lite.connect(pathToData + 'psych.db') 
+con = lite.connect(config.pathToData + 'psych.db') 
 form = cgi.FieldStorage()
 
 def gen_main_form():
@@ -120,8 +120,8 @@ if ('ajax' in form):
 #	run_inference()
 elif ('facebook' in form):
     process_facebook()
-elif ('setup' in form): #If setup is passed, then we download all the stuff the site might need.
-    ohf.setupdatabase(con)
+#elif ('setup' in form): #If setup is passed, then we download all the stuff the site might need.
+#    ohf.setupdatabase(con) ##just run this seperately
 else:
 	gen_main_form()
 

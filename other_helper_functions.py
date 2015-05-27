@@ -150,7 +150,9 @@ def do_inference(con,userid,feature_list):
         a.append_facts(facts, answers)
 
     for a in answers:
-#        print "appending features from %s" % a.dataset
+    #    if a.dataset in ['babynames']:
+     #      continue;
+        print "appending features from %s" % a.dataset
         a.append_features(features,facts)
 
     if ('factor_age' not in features):

@@ -119,6 +119,8 @@ class CensusAnswer(ans.Answer):
           function (@pm.deterministic): outputs probability given the parameters.
         """
         probs = self.probs
+     #   import pdb
+     #   pdb.set_trace()
         @pm.deterministic    
         def seenGivenAgeGender(age=features['factor_age'],oa=features['oa']):
             pSeen_AgeGender = probs

@@ -10,6 +10,7 @@ from operator import itemgetter, attrgetter, methodcaller
 import pyproj
 import zipfile,os.path,os
 import sqlite3 as lite
+from scipy.stats import norm
 
 import shapefile
 from shapely.geometry import Point
@@ -179,8 +180,8 @@ class WhereAnswer(ans.Answer):
             osgb36=pyproj.Proj("+init=EPSG:27700");
             for item in items:
                 [e,n] = osgb36(item.lon,item.lat)
-                item.east = e/1000.
-                item.north = n/1000. #to km from .
+                item.east = e
+                item.north = n
 
             lmcur = cls._landmarks.cursor()        
             lmcur.execute("INSERT INTO landmark_queries (querylat) VALUES (?);",(lat,)) #Note that this has now been cached. Some queries might not have any rows created, hence why a second table is needed.
@@ -227,138 +228,6 @@ class WhereAnswer(ans.Answer):
         if (self.dataitem=='landmarkdist'):
             return "How far from your home is %s? (in kilometres, e.g. 2.3)" %  WhereAnswer.get_place(self.detail)[0]
         return "Some sort of place question..."
-        
-    def calc_probs(self): #TODO: DELETE THIS FUNCTION???
-        self.probs = np.zeros([101,2,2]) #age, gender, seen or not seen
-        for genderi,gender in enumerate(['M','F']):
-            c_ages = MovieAnswer._movielens.execute("SELECT DISTINCT(age) FROM users;") #Maybe could do all this with some outer joins, but couldn't get them working.     
-            ages = {};
-            p = [];
-            for i,r in enumerate(c_ages):
-                ages[r[0]]=i
-                p.append(0)   
-            c_movie = MovieAnswer._movielens.execute("SELECT users.age,count(*) FROM users JOIN ratings ON users.user=ratings.user WHERE ratings.movie=? AND users.gender=? GROUP BY users.age ORDER BY users.age;",(self.movie,gender));
-            for r in c_movie:
-                p[ages[r[0]]] = r[1]
-            c_all = MovieAnswer._movielens.execute("SELECT users.age,count(*) FROM users JOIN ratings ON users.user=ratings.user WHERE users.gender=? GROUP BY users.age ORDER BY users.age;",(gender));
-            for r in c_all:
-                p[ages[r[0]]] = 1.*p[ages[r[0]]]/r[1]
-            p = np.array([0,0,0,0,0,0]);#TODO:!WHAT IS THIS DOING HERE?!!?!!!! TO FIX!
-            d = ans.distribute_probs(p,np.array([18,25,35,45,50,56]))
-            self.probs[:,genderi,0] = d
-            self.probs[:,genderi,1] = 1-d #TODO! WARNING ARE THESE THE RIGHT WAY 'ROUND?
-
-    def get_pymc_function(self,features):
-        """Returns a function for use with the pyMC module, either:
-          - p(seen|age,gender)
-          - p(rating|age,gender)
-
-        Args:
-          features (dictionary): Dictionary of pyMC probability distributions.
-        
-        Returns:
-          function (@pm.deterministic): outputs probability given the parameters.
-        """
-        self.calc_probs() #calculates probs and puts them in self.probs
-        probs = self.probs
-        @pm.deterministic    
-        def seenGivenAgeGender(age=features['factor_age'],gender=features['factor_gender']):
-            pSeen_AgeGender = probs
-            return pSeen_AgeGender[age][gender]
-        return seenGivenAgeGender
-    
-    def donut(self,X,Y,centreX,centreY,radius,width):
-        radiussqr = radius**2;
-        twowidthsqr = 2*width**2;
-        normalising = 1./(width*np.sqrt(2.*np.pi));
-        Z = np.zeros_like(X)
-        for xi,(xrow,yrow) in enumerate(zip(X,Y)):
-            for yi,(x,y) in enumerate(zip(xrow,yrow)):
-                distsqr=((x-centreX)**2+(y-centreY)**2)
-                exponent = (np.sqrt(distsqr)-radius)**2;
-                Z[xi][yi] = np.exp(-exponent/twowidthsqr)*normalising
-        scale = (X[0][1]-X[0][0])*(Y[1][0]-Y[0][0])
-        Z = (Z/np.sum(Z))/scale
-        return Z
-
-    def calcDonuts(self,items,bbox,delta = 0.15):
-        x = np.arange(bbox[0], bbox[2], delta)
-        y = np.arange(bbox[1], bbox[3], delta)
-        X, Y = np.meshgrid(x, y)
-        points = []
-        for it in items:
-            point = [it['east'],it['north'],it['dist'],it['dist']*.3]
-            points.append(point)
-        Zrunning = np.ones_like(X);
-        Zrunning = (Zrunning/np.sum(Zrunning))#/(delta**2)
-        for point in points:
-            Zpoint = self.donut(X,Y,point[0],point[1],point[2],point[3])        
-            Zpoint = (Zpoint/np.sum(Zpoint))#/(delta**2)
-
-            Zrunning = Zrunning * Zpoint;
-            Zrunning = (Zrunning/np.sum(Zrunning))#/(delta**2)
-        return (X,Y,Zrunning)
-
-    def get_likely_OAs(self,bbox,X,Y,Z):
-        #sf = shapefile.Reader(ans.Answer.pathToData + "OA_shapes/infuse_oa_lyr_2011.shp")
-        #sf = shapefile.Reader(ans.Answer.pathToData + "old_OA_shapes/england_oac_2011.shp")
-        #shps = sf.shapes()
-        #recs = sf.records()
-        #scaled by 1000 back to m again, as the OA boundary data is in metres.
-        tempbbox = [b*1000 for b in bbox]
-
-        bdcur = WhereAnswer._boundaries.cursor()        
-
-        results = bdcur.execute("SELECT record, shape FROM boundaries WHERE bbox2>? AND bbox0<? AND bbox3>? AND bbox1<?",(tempbbox[0],tempbbox[2],tempbbox[1],tempbbox[3]))
-        shps = []
-        recs = []
-        for res in results:
-            shp_points = json.loads(res[1])
-            rec = json.loads(res[0])
-            shps.append(Polygon(shp_points))
-            recs.append(rec)
-
-      #  print "Found %d relevant shapes" % len(recs)
-     #   print "X has shape:"
-      #  print X.shape
-        xs = X.flatten()
-     #   print "Y has shape:"
-     #   print Y.shape
-        ys = Y.flatten()
-     #   print "Z has shape:"
-     #   print Z.shape
-        zs = Z.flatten()
-     #   print "%d points in grid" % len(xs)
-        #Remove tiles without any probability associated, and scale to metres again
-        xs = xs[zs>1e-5]*1000.
-        ys = ys[zs>1e-5]*1000.
-        zs = zs[zs>1e-5]*1000.
-    #    print "%d points left" % len(xs)
-        totalP = np.zeros(len(shps))
-        for i,shp in enumerate(shps): #TODO I THINK THIS BIT IS SLOW
-            for x,y,z in zip(xs,ys,zs):
-                pnt = Point(x,y)
-                if pnt.within(shp):
-                    totalP[i] += z
-        
-        for i,(p,shp) in enumerate(zip(totalP,shps)):
-            totalP[i] = p / shp.area
-        
-        totalP = totalP / np.sum(totalP) #normalise
-        
-        #if threshold means none or more than ten OAs are in the selection, change it
-        #TODO: This doesn't seem to work (i.e. more than 10 can be included). Doesn't seem to be a problem though, although a little slow
-        #might break if number<1
-        #also means a shedload of API queries happened to the ONS for each of these OAs.
-        thresh = 0.0001
-        if (np.sum(totalP>thresh)>10) or (np.sum(totalP>thresh)<1):
-            temp = totalP[:]
-            temp.sort()
-            thresh = temp[10]
-
-        recs = np.array(recs)[totalP>0.0001]
-     #   print "calculation complete."
-        return [r[0] for r in recs], totalP[totalP>0.0001] #the nearby shapes and probabilities associated with each of them
 
     def append_facts(self,facts,all_answers):
         """Alters the facts dictionary in place, adding facts associated with
@@ -386,26 +255,67 @@ class WhereAnswer(ans.Answer):
                         dist = float(a.answer)
                     except ValueError:
                         continue
-                    item = {'placename':placename, 'lat':lat, 'lon':lon, 'east':east, 'north':north, 'dist':dist}
+                    item = {'placename':placename, 'lat':lat, 'lon':lon, 'east':east, 'north':north, 'dist':dist*1000.} #distance was given in km - need in m
                     items.append(item)
         bbox = [0,0,0,0];
-        margin = 15.
-        bbox[0] = min([it['east'] for it in items])-margin;
-        bbox[1] = min([it['north'] for it in items])-margin;
-        bbox[2] = max([it['east'] for it in items])+margin;
-        bbox[3] = max([it['north'] for it in items])+margin;
-    #    print items
-        res = ((bbox[2]+bbox[3]-bbox[1]-bbox[2])/2.)/10. #about 10x10 will do
-        (X,Y,Z) = self.calcDonuts(items,bbox,res)
-    #    print X.shape
-        
+        bbox[0] = min([it['east'] for it in items]);
+        bbox[1] = min([it['north'] for it in items]);
+        bbox[2] = max([it['east'] for it in items]);
+        bbox[3] = max([it['north'] for it in items]);
+        margin = (bbox[3]+bbox[2]-bbox[1]-bbox[0])/4.
+        bbox[0] -= margin
+        bbox[1] -= margin
+        bbox[2] += margin
+        bbox[3] += margin
+     
+        cur = WhereAnswer._boundaries.cursor()
+        results = cur.execute("SELECT record, shape FROM boundaries WHERE bbox2>? AND bbox0<? AND bbox3>? AND bbox1<?",(bbox[0],bbox[2],bbox[1],bbox[3]))
+        shps = []
+        recs = []
+        for res in results:
+            shp_points = json.loads(res[1])
+            rec = json.loads(res[0])
+            shps.append(Polygon(shp_points))
+            recs.append(rec)
+        cur.close()
+        ps = []
+        for shp in shps:
+            prob = 0
+            count = 0
+            for e in np.arange(shp.bounds[0],shp.bounds[2],(shp.bounds[2]-shp.bounds[0])/5.):
+                for n in np.arange(shp.bounds[1],shp.bounds[3],(shp.bounds[3]-shp.bounds[1])/5.):
+                    pnt = Point(e,n)
+                    if pnt.within(shp):
+                        p = 1
+                        for it in items:
+                        #we want p(distance_to_each_landmark|location)
+                        #if we find the average of these inside the OA, we'll have p(distance|OA) = SUM[ p(dist|loc)p(loc|OA) ]
+                        #p(loc|OA) is either 1/number_of_locs_in_OA or 0.
+                            dist = ((e - it['east'])**2 + (n - it['north'])**2)**.5                            
+                            p *= norm.pdf(dist,it['dist'],it['dist']*0.1)
+                            count += 1
+                            #if (p>0.0001):
+                            #    print "%0.0f %0.0f: %0.0f %0.0f, %0.2f-%0.2f (%0.5f)" % (e,n,it.east,it.north,dist,it.dist,p)
+                        prob += p
+            ps.append(prob/count)
+       
+        ps = np.array(ps)
+        recs = np.array(recs)
 
-        rs,ps = self.get_likely_OAs(bbox,X,Y,Z)
+        thresh = 0.0001
+        if (np.sum(ps>thresh)>10) or (np.sum(ps>thresh)<1):
+            temp = ps[:]
+            temp.sort()
+            thresh = temp[-10]
+
+        recs = recs[ps>thresh]
+        rs = [r[0] for r in recs]
+        ps = ps[ps>thresh]
+    
         if len(ps)>0:
             facts['where'] = {'probabilities':ps, 'OAs':rs}
         else:
             facts['where'] = {'probabilities':np.array([1]), 'OAs':['K04000001']}
-        facts['where']['debug'] = {'X':X,'Y':Y,'Z':Z,'bbox':bbox}
 
 
     def append_features(self,features,facts): 
