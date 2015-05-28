@@ -21,17 +21,26 @@ def gen_main_form():
     sid,cookie = whf.get_session_id();
     print cookie
     print 'Content-Type: text/html\n';
-    print '<html><head><title>Psychic</title><link rel="stylesheet" href="../style.css" type="text/css" media="screen"></head><body>';
+    print '<html><head><title>Psychic</title>';
+    print '<link rel="stylesheet" href="../style.css" type="text/css" media="screen">';
+    print '<link rel="stylesheet" href="../animate.css" type="text/css">';
+    print '</head><body>';
 
 
     print '<script src="../jquery-1.11.2.min.js"></script>';
     print '<script src="../psych.js"></script>';
-    print '<div class="page">';
-    print '<h1>Psychoc Sally</h1>';
+    print '<div class="page"><div class="pageinner"><div class="pageinnerinner">';
+    #print '<h1>Psychoc Sally</h1>';
     print '<div id="conversation"></div>';
-    print '<input type="text" id="chatbox" size="10" />';
+    print '<input type="text" id="chatbox" size="17" autofocus />';
+
+    print '<script>if (!("autofocus" in document.createElement("input"))) {document.getElementById("chatbox").focus(); }</script>'; #does autofocus for old versions of IE.
+
     print '<button id="reply">Reply</button>';
+    print '<br />';
+    print '<div class="loader"><div class="circle">&nbsp;</div><div class="circle">&nbsp;</div><div class="circle">&nbsp;</div><div class="circle">&nbsp;</div></div>';
     print '</div>';
+    print '</div></div>';
     print '</body></html>';
 
 def process_ajax():
@@ -41,16 +50,29 @@ def process_ajax():
     print '<html><body>'    
     msg = '';
     userid = whf.get_user_id(con,sid);
-    if ('reply' in form):
-        ohf.set_answer_to_last_question(con, userid, form['reply'].value);
     cur = con.cursor()
     cur.execute('SELECT COUNT(*) FROM qa WHERE userid=?;',(userid,));
     data = cur.fetchone();	
     cur.close()
     state = whf.get_conversation_state(con,sid)
- #   print state
- #   print "TESTING"
+
+#user can delete the data at any point
+
+    if ('reply' in form):
+        if form['reply'].value.upper()=='DELETE':
+            msg = "Your data has been deleted."
+            ohf.delete_users_data(con,userid)
+            whf.set_conversation_state(con,sid,100)
+            state = -1;
+    if (state==100):
+        msg = "The answers you gave to us about you have been erased.";
     if (state==0):
+        if (data[0]==0): 
+            msg = 'Welcome to this psychic experience. I will ask you some questions, and, using my psychic powers (and maths) I shall predict the unpredictable!<br/></br>\n' + msg;
+ 
+        if ('reply' in form):
+            ohf.set_answer_to_last_question(con, userid, form['reply'].value);
+
         if (data[0]>10):
             msg = 'Enough questions! I shall now peer into my crystal ball of now, to find your age... (this might take me a while)<!--query-->';
             whf.set_conversation_state(con,sid,1)
@@ -93,23 +115,42 @@ def process_ajax():
             relmsg = ', '.join(listOfReligions[:-1]) + ' or ' + listOfReligions[-1]
         else:
             relmsg = listOfReligions[0]
-        msg = msg + " I think you are " + relmsg
-        
-
-
-
+        msg = msg + " I think you are " + relmsg + '. <!--query-->'
+        msg = '<b>' + msg + '</b>';
         whf.set_conversation_state(con,sid,2)
     if (state==2):
-        msg = "We're done."
+        if ('reply' in form):
+            ans = form['reply'].value
+            msg = "%s? Interesting. <!--query-->" % ans; #TODO: SANITISE INPUT
+            ohf.set_answer_to_last_question(con, userid, ans);
+        else:
+            cur = con.cursor()
+            results = cur.execute('SELECT dataitem FROM qa WHERE dataset = "direct" AND userid = ?', (userid,));
+            dataitems = ['age','religion']
+            for data in results:
+                dataitems.remove(data[0])
+            cur.close()
+            if (len(dataitems)==0):
+                whf.set_conversation_state(con,sid,3)
+                msg = "One more thing... <!--query-->";
+            else:
+                if (dataitems[0]=='age'):
+                    msg = "I wonder if I was correct about your age. What is your actual age (if you don't mind me asking?)";
+                    whf.add_question(con, userid, 'direct', 'age', ''); 
+                if (dataitems[0]=='religion'):
+                    msg = "I wonder if I was correct about your religion. What religion (or none) do you identify as?";
+                    whf.add_question(con, userid, 'direct', 'religion', ''); 
+    if (state==3):
+        msg = "If it's ok with you, we would like to keep these answers to improve our psychic abilities in future. We won't use your data for anything else, or pass it on to anyone else.<br/>";
+        msg+= "If you want us to delete the data, you can type 'delete' here, now, or at any time in the future. <!--query-->";
+        whf.set_conversation_state(con,sid,4)
+    if (state==4):
+        msg = "Thanks for helping with the psychic experiment: It's now complete. To find out more, please follow us on twitter."
 #       msg = 'Enough questions, please visit the <a href="index.cgi?infer=on&userid=%d&feature=age">calculation</a> to see an estimate of your age. It\'s quite slow: Please be patient.' % userid;
     
-      
-    if (data[0]==0): 
-        msg = 'Welcome to this psychic experience. I will ask you some questions, and, using my psychic powers (and maths) I shall predict the unpredictable!<br/></br>\n' + msg;
-  #      msg = 'Hello, welcome to this psychic experience. As this is still being tested, the app hasn\'t been submitted for review by facebook. Please allow the blocked popup and agree to the data share. Then: I will ask you some questions, and, using my psychic powers (and maths) I shall predict the unpredictable!<br/></br>\n' + msg;
-    #msg = msg + "%d" % data[0];
+     
     if ('reply' in form):
-        print('<div class="reply"><span class="innerreply">'+form['reply'].value+'</span></div>');
+        print('<div class="reply"><span class="innerreply">'+form['reply'].value+'</span><div class="replypic"></div></div>');
     print('<div class="msg"><span class="innermsg">'+msg+'</span></div>');
     print '</body></html>'
 

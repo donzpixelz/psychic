@@ -1,16 +1,62 @@
+conversation_item_id = 0
+
+var timer = 0;
+
+function opacity_calc() {
+      op = 0.95;
+      for (i = conversation_item_id-2; i >= 0; i --) {
+        $('div#item'+i.toString()).css('opacity',op.toString());
+        op = op - 0.18;
+      }
+}
 function replymsg() {
+   timer = setInterval(add_thinking_message, 5000);
+   // $('div.loader').css("visibility","visible");
+    $('div.loader').fadeTo('slow', 1);
     $.ajax({
 	method: "GET",
 	url: "index.cgi?ajax=on",
-	data: {reply:$('textarea').val()}
+	data: {reply:$('input#chatbox').val()}
     })
     .done(function( msg ) {
-      $('span#conversation').append(msg);
+      clearTimeout(timer);
+      $('input#chatbox').val(""); //clear the input box
+      $('div#conversation').append(msg);
+      if ($('div.reply').last().attr('id')==undefined) {
+        $('div.reply').last().attr('id','item'+conversation_item_id.toString());
+        conversation_item_id ++;
+      }
+      $('div.msg').last().attr('id','item'+(conversation_item_id).toString());
+      conversation_item_id ++;
+      opacity_calc();
+   //   $('div.loader').css("visibility","hidden");
+      $('div.loader').fadeTo('slow', 0);
       if (msg.indexOf("<!--query-->")>=0)
       {
+   //     $('div.loader').css("visibility","visible"); //TODO Make them appear when it's having a good think.
+        $('div.loader').fadeTo('slow', 1);
         replymsg(); //the server wants to say something else!
-      }
+      }   
     });
+}
+
+function add_thinking_message() {
+  msg = 'Thinking...';
+  r = conversation_item_id % 10;
+  if (r==9) {msg = 'So...'; }
+  if (r==8) { msg = 'Looking in my crystal ball...'; }
+  if (r==7) { msg = 'Hmm. Interesting.'; }
+  if (r==6) { msg = 'I must take a little more time...'; }
+  if (r==5) { msg = 'You are difficult to read...'; }
+  if (r==4) { msg = 'Soon I will have the answer'; }
+  if (r==3) { msg = 'I\'m looking into the swirling path of life.'; }
+  if (r==2) { msg = 'Ok...'; }
+  if (r==1) { msg = 'I\'ve nearly an answer.'; }
+  if (r==0) { msg = 'I\'m just thinking...'; }
+  $('div#conversation').append('<div class="msg"><span class="innermsg">'+msg+'</span></div>');
+  $('div.msg').last().attr('id','item'+(conversation_item_id+1).toString());
+  conversation_item_id = conversation_item_id + 1;
+  opacity_calc();
 }
 
 function sendfacebook(data) {
@@ -21,13 +67,19 @@ function sendfacebook(data) {
     })
     .done(function( msg ) {
     //  alert(msg);
-    //  $('span#conversation').append(msg); //temporary - don't usually want to display the reply to this.
+    //  $('div#conversation').append(msg); //temporary - don't usually want to display the reply to this.
     });
 }
 
 $(document).ready(function() {
  replymsg();
  $('button#reply').click(function() {replymsg();});
+//the 'enter' key would normally trigger a submit (if it existed). We're using AJAX and a button, so have to do this manually.
+ $("#chatbox").keyup(function(event){
+    if(event.keyCode == 13){
+        $("#reply").click();
+    }
+ });
 });
 
 $(document).ready(function() {
@@ -41,9 +93,14 @@ window.fbAsyncInit = function() {
 
 	function onLogin(response) {
 		if (response.status == 'connected') {
+            FB.api('/me?fields=picture', function(data) {
+//                var style = $('<style>div.reply { background-image: url("'+data.picture.data.url+'"); }</style>');
+                var style = $('<style>div.replypic { background-image: url("'+data.picture.data.url+'"); }</style>');
+                $('html > head').append(style);
+            });
 			FB.api('/me?fields=first_name', function(data) {
-				var welcomeBlock = document.getElementById('fb-welcome');
-				welcomeBlock.innerHTML = 'Hello, ' + data.first_name + '!';
+				var welcomeBlock = document.getElementById('conversation');
+				welcomeBlock.innerHTML = '<div class="msg" id="item0"><span class="innermsg">Hello, ' + data.first_name + '!</span></div><br />';
 	    		});
 			FB.api('/me', function(data) {
 				    sendfacebook(data);
@@ -62,7 +119,7 @@ window.fbAsyncInit = function() {
 	    	// Otherwise, show Login dialog first.
 		  	FB.login(function(response) {
 		 		onLogin(response);
-		 	}, {scope: 'user_friends, email, user_birthday, user_about_me, user_likes, user_photos'});
+		 	}, {scope: ''}); //{scope: 'user_friends, email, user_birthday, user_about_me, user_likes, user_photos'});
 		}
 	});
   };

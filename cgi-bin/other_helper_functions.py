@@ -46,6 +46,9 @@ def pick_question(con,userid):
         c = [cls for cls in ans.Answer.__subclasses__() if cls.dataset not in ['postcode']] #stops it asking about postcode
        # c = [cls for cls in ans.Answer.__subclasses__()] #       c = [cls for cls in ans.Answer.__subclasses__() if cls.dataset in ['where','postcode']] #TODO TESTING ONLY        c = [cls for cls in ans.Answer.__subclasses__() if cls.dataset not in ['movielens','postcode']] #TODO TESTING ONLY        
         cl = random.choice(c)
+        if (cl.dataset=='movielens'):
+            if random.random()<0.6: #discourage movielens questions, as they're of little use
+                continue
  #       print cl.dataset
         cl.init_db() #normally should be started from an instance?? but we don't really mind.
         dataitem, detail = cl.pick_question(questions_asked)
@@ -171,6 +174,12 @@ def do_inference(con,userid,feature_list):
         output[feature] = (minval,maxval,meanval)
 
     return output, model, mcmc, features, facts
+
+def delete_users_data(con,userid):
+    cur = con.cursor()
+    cur.execute("DELETE FROM qa WHERE userid = ?;",(userid,))
+    cur.close()
+    con.commit()
 
 def set_answer_to_last_question(con,userid, answer):
     cur = con.cursor()
