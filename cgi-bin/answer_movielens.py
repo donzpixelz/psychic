@@ -10,6 +10,7 @@ import random
 import zipfile,os.path,os
 import sqlalchemy as sa
 import pandas as pd
+import other_helper_functions as ohf
 
 from StringIO import StringIO
 from zipfile import ZipFile
@@ -51,7 +52,12 @@ class MovieAnswer(ans.Answer):
             users.to_sql('users',con,index=False,if_exists='replace');
             movies.to_sql('movies',con,index=False,if_exists='replace');
             con.close();
-
+            con = sqlite3.connect(ans.Answer.pathToData+'movielens.db')
+            cur = con.cursor()
+            cur.execute('CREATE INDEX user_ratings ON ratings (user);');
+            cur.execute('CREATE INDEX user_users ON users(user);');
+            cur.execute('CREATE INDEX movie ON ratings(movie);');
+            cur.execute('CREATE INDEX age ON users(age);');
 
     @classmethod
     def init_db(cls):
@@ -97,23 +103,40 @@ class MovieAnswer(ans.Answer):
         
     def calc_probs(self):
         self.probs = np.zeros([101,2,2]) #age, gender, seen or not seen
+
+        ages = {};
+        c_ages = MovieAnswer._movielens.execute("SELECT DISTINCT(age) FROM users;") #Maybe could do all this with some outer joins, but couldn't get them working.    
+        ages_list = []
+        for i,r in enumerate(c_ages):
+            ages[r[0]]=i
+            ages_list.append(r[0])
+
         for genderi,gender in enumerate(['M','F']):
-            c_ages = MovieAnswer._movielens.execute("SELECT DISTINCT(age) FROM users;") #Maybe could do all this with some outer joins, but couldn't get them working.     
-            ages = {};
-            p = [];
-            for i,r in enumerate(c_ages):
-                ages[r[0]]=i
-                p.append(0)   
+            nSeen = np.zeros(len(ages))
+            nTotal = np.zeros(len(ages))
+
             c_movie = MovieAnswer._movielens.execute("SELECT users.age,count(*) FROM users JOIN ratings ON users.user=ratings.user WHERE ratings.movie=? AND users.gender=? GROUP BY users.age ORDER BY users.age;",(self.movie,gender));
             for r in c_movie:
-                p[ages[r[0]]] = r[1]
-            c_all = MovieAnswer._movielens.execute("SELECT users.age,count(*) FROM users JOIN ratings ON users.user=ratings.user WHERE users.gender=? GROUP BY users.age ORDER BY users.age;",(gender));
+                nSeen[ages[r[0]]] = r[1]  #find p(seen,age,gender)
+            c_all = MovieAnswer._movielens.execute("SELECT users.age,count(*) FROM users WHERE users.gender=? GROUP BY users.age ORDER BY users.age;",(gender));
             for r in c_all:
-                p[ages[r[0]]] = 1.*p[ages[r[0]]]/r[1]
-            p = np.array([0,0,0,0,0,0]);#TODO:!WHAT IS THIS DOING HERE?!!?!!!! TO FIX!
-            d = ans.distribute_probs(p,np.array([18,25,35,45,50,56]))
-            self.probs[:,genderi,0] = d
-            self.probs[:,genderi,1] = 1-d #TODO! WARNING ARE THESE THE RIGHT WAY 'ROUND?
+                nTotal[ages[r[0]]] = r[1] #find p(age,gender)
+            pSeen = 1. * nSeen / nTotal #p(s|age,gender) = p(s,age,gender)/p(age,gender)
+            pNotSeen = 1. * (nTotal-nSeen) / nTotal #p(not s|age,gender) = [p(age,gender)-p(s,age,gender)]/p(age,gender)
+
+            ages_list = np.array(ages_list)
+#the movielens timestamps are between
+# 26 Apr 2000 # and 28 Feb 2003.
+# average: 27 Sep 2001, 
+            from datetime import datetime
+            currentYear = datetime.now().year
+            ageDiff = (currentYear-2001) #the people are now older by this age difference
+            ages_list = ages_list + ageDiff
+         #   print ages_list
+            dSeen = ans.distribute_probs(pSeen,ages_list[1:])
+            dNotSeen = ans.distribute_probs(pNotSeen,ages_list[1:])
+            self.probs[:,genderi,0] = dNotSeen
+            self.probs[:,genderi,1] = dSeen
 
     def get_pymc_function(self,features):
         """Returns a function for use with the pyMC module, either:
@@ -157,8 +180,8 @@ class MovieAnswer(ans.Answer):
             features['factor_gender'] = pm.Categorical('factor_gender',np.array([0.5,0.5]));
         if self.featurename in features:
             raise DuplicateFeatureException('The "%s" feature is already in the feature list.' % self.featurename);
-        features[self.featurename]=pm.Categorical(self.featurename, self.get_pymc_function(features), value=True, observed=True)#UHOH WE DON'T SEEM TO BE USING THE ACTUAL VALUE!
-
+        seen = ohf.true_string(self.answer);
+        features[self.featurename]=pm.Categorical(self.featurename, self.get_pymc_function(features), value=seen, observed=True)
     @classmethod
     def pick_question(self,questions_asked):
         #temporary list of films I'VE seen!
