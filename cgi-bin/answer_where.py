@@ -11,6 +11,8 @@ import pyproj
 import zipfile,os.path,os
 import sqlite3 as lite
 from scipy.stats import norm
+import socket
+
 
 import shapefile
 from shapely.geometry import Point
@@ -123,8 +125,9 @@ class WhereAnswer(ans.Answer):
         lmcur.execute("SELECT COUNT(*) FROM landmark_queries WHERE querylat=?;",(lat,))
         data = lmcur.fetchone();
         lmcur.close()
-        if (data[0]>0):
-  #          print "Cache hit found"
+        #if (data[0]>0):
+        if (False):
+#            print "Cache hit found"
             lmcur = cls._landmarks.cursor()
             results = lmcur.execute("SELECT landmark_id, name, lat, lon, east, north FROM landmarks WHERE querylat=?;", (lat,));
             items = []
@@ -258,15 +261,16 @@ class WhereAnswer(ans.Answer):
                     item = {'placename':placename, 'lat':lat, 'lon':lon, 'east':east, 'north':north, 'dist':dist*1000.} #distance was given in km - need in m
                     items.append(item)
         bbox = [0,0,0,0];
-        bbox[0] = min([it['east'] for it in items]);
-        bbox[1] = min([it['north'] for it in items]);
-        bbox[2] = max([it['east'] for it in items]);
-        bbox[3] = max([it['north'] for it in items]);
-        margin = (bbox[3]+bbox[2]-bbox[1]-bbox[0])/4.
-        bbox[0] -= margin
-        bbox[1] -= margin
-        bbox[2] += margin
-        bbox[3] += margin
+        if len(items)>0:    ####TODO TODO TODO HANDLE WHAT HAPPENS IF NO ITEMS
+            bbox[0] = min([it['east'] for it in items]);
+            bbox[1] = min([it['north'] for it in items]);
+            bbox[2] = max([it['east'] for it in items]);
+            bbox[3] = max([it['north'] for it in items]);
+            margin = (bbox[3]+bbox[2]-bbox[1]-bbox[0])/4.
+            bbox[0] -= margin
+            bbox[1] -= margin
+            bbox[2] += margin
+            bbox[3] += margin
      
         cur = WhereAnswer._boundaries.cursor()
         results = cur.execute("SELECT record, shape FROM boundaries WHERE bbox2>? AND bbox0<? AND bbox3>? AND bbox1<?",(bbox[0],bbox[2],bbox[1],bbox[3]))
@@ -394,7 +398,6 @@ class WhereAnswer(ans.Answer):
 #incity->no --> city->name
 #landmark->yes --> landmarkdist->distance
 #landmark->no --> landmark...
-
                 #from the questions and answers so far given, do we...
         know_city = False  #...know the city where they are?
         not_in_city = False #...know they aren't in the city we guessed (from their IP address)?
@@ -403,6 +406,8 @@ class WhereAnswer(ans.Answer):
         city_details = {}
         outstanding_landmarks = []      #List of landmarks we know they know, but we don't know how far they are.           
         landmarks_done_already = [];    #List of landmarks we know the distance to already
+        known_landmarks = [];           #similar to landmarks_done_already but only includes ones we have answers for
+        known_distances = [];           #the distances to the landmarks (in the same order)
 
         for qa in questions_asked:
             if qa['dataset']=='where':          #if it is a landmark->where question        
@@ -432,21 +437,24 @@ class WhereAnswer(ans.Answer):
                     landmarks_done_already.append(int(qa['detail']));
                 if qa['dataitem'] == 'landmarkdist':
                     outstanding_landmarks.remove(int(qa['detail']));
-        
+                    known_distances.append(float(qa['answer']));
+                    known_landmarks.append(int(qa['detail']));
         if failed:
             return 'None', '' #Give up: we can't create any sensible questions
-           
         if not know_city:   #if we don't know the city we're in...
             if not_in_city: #if we're not in the place we guessed using their IP, ask their city
                 return 'city',''
             else:           #if we don't know that, we need to ask if they're where their IP is.
                 url = 'https://freegeoip.net/json/';
                 try:
-                    raw_json = urllib2.urlopen(url).readline() #TODO SECURITY VULNERABILITY: This json is from the net and needs sanitising before it goes in the db.
+                    raw_json = urllib2.urlopen(url,timeout=3).readline() #TODO SECURITY VULNERABILITY: This json is from the net and needs sanitising before it goes in the db.
                 except urllib2.HTTPError:
                     raw_json = ''
                     return 'city',''
-
+                except urllib2.URLError:#time out?
+                    raw_json = ''
+                    return 'city',''
+                    
                 data = {}
                 json_loc = json.loads(raw_json)
                 data['latitude'] = json_loc['latitude']
@@ -458,14 +466,20 @@ class WhereAnswer(ans.Answer):
         #at this point we should know the city.
         if (len(outstanding_landmarks)==0):
             #pick a new landmark to ask about...
-               
-            items = cls.overpass_query(city_details['latitude'],city_details['longitude'],0.1,'tourism', 'museum')
-            
+            #print "Find a new landmark to ask about.."
+            items = cls.overpass_query(city_details['latitude'],city_details['longitude'],0.4,'tourism', 'museum')            
             new_item = None
-            for item in items:
-                if not item.id in landmarks_done_already:
-                    new_item = item
-                    break
+            import trilateration
+           # items,p,entropy = trilateration.sortLandmarks(items,known_landmarks,known_distances)
+
+            items,p,entropy = trilateration.sortLandmarks(items,known_landmarks,known_distances,landmarks_done_already)
+            #print items
+          #  for item in items:
+          #      if not item.id in landmarks_done_already:
+          #          new_item = item
+          #          break #TODO delete old code
+            if (len(items)>0):
+                new_item = items[0]
             if new_item == None:
                 #no more places to ask about
                 return 'None', ''

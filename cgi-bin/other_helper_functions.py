@@ -47,18 +47,18 @@ def pick_question(con,userid):
        # c = [cls for cls in ans.Answer.__subclasses__()] #       c = [cls for cls in ans.Answer.__subclasses__() if cls.dataset in ['where','postcode']] #TODO TESTING ONLY        c = [cls for cls in ans.Answer.__subclasses__() if cls.dataset not in ['movielens','postcode']] #TODO TESTING ONLY        
         cl = random.choice(c)
         if (cl.dataset=='movielens'):
-            if random.random()<0.6: #discourage movielens questions, as they're of little use
+            if random.random()<0.5: #discourage movielens questions, as they're of less use
                 continue
- #       print cl.dataset
+     #   print cl.dataset
         cl.init_db() #normally should be started from an instance?? but we don't really mind.
         dataitem, detail = cl.pick_question(questions_asked)
         dataset = cl.dataset
         if (dataitem=='None' or dataitem=='Skip'):
- #           print "NONE or SKIP"
+      #      print "NONE or SKIP"
             continue;
         question = "%s_%s_%s" % (dataset, dataitem, detail)
         if (question in questions_only_asked):
-#            print "DUPLICATE"
+       #     print "DUPLICATE"
             continue
         else:
             found = True
@@ -128,7 +128,7 @@ def do_inference(con,userid,feature_list):
         c = [cls for cls in ans.Answer.__subclasses__() if cls.dataset==dataset]
         if len(c)==0:
         #Don't know this type of data:
-            return [0,0]
+            continue #just skip it
         name = "%s_%s_%s_%s" % (dataset,dataitem,str(detail),str(answer));
         name = "item%d" % tempiterator
         answers.append(c[0](name,dataitem,detail,answer))

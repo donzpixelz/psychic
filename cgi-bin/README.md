@@ -10,4 +10,9 @@ Online psychic: Runs on a webserver.
 
 Python module dependency list (TODO)
 - numpy
-- TODO
+- pyproj
+- overpy
+- pymc
+- pyshp
+- shapely
+

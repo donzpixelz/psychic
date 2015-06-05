@@ -47,7 +47,8 @@ def process_ajax():
     sid,cookie = whf.get_session_id();
     print cookie
     print 'Content-Type: text/html\n'
-    print '<html><body>'    
+    print '<html><body>'
+  
     msg = '';
     userid = whf.get_user_id(con,sid);
     cur = con.cursor()
@@ -57,8 +58,33 @@ def process_ajax():
     state = whf.get_conversation_state(con,sid)
 
 #user can delete the data at any point
-
+    if ('keystrokerecord' in form):
+        cur = con.cursor()
+        #print json.loads(form['keystrokerecord'].value);
+        keystrokes = form['keystrokerecord'].value;
+        import datetime
+        dt = str(datetime.datetime.now());
+        cur.execute('INSERT INTO keystrokes (qid, keystrokes, date) VALUES ((SELECT qid FROM qa WHERE userid=? AND asked_last=1), ?, ?);',(userid,keystrokes,dt))
+        cur.close()
+        con.commit()
     if ('reply' in form):
+        if form['reply'].value.upper()[0:3]=='SET':
+            print "Setting..."
+            a = form['reply'].value.upper().split(',')
+            if (a[1]=='NAME'):
+                print "Name..."
+                temp = '{"reply[first_name]": "%s"}' % a[2]
+                print temp
+                print userid
+                cur = con.cursor()
+                cur.execute("UPDATE qa SET answer=? WHERE userid=? AND dataset='facebook'",(temp,userid))
+                print "EXE"
+                cur.close()
+                con.commit()
+                print "Done."
+                print "Updating names to %s." % a[2]
+                return
+
         if form['reply'].value.upper()=='DELETE':
             msg = "Your data has been deleted."
             ohf.delete_users_data(con,userid)
@@ -67,15 +93,15 @@ def process_ajax():
     if (state==100):
         msg = "The answers you gave to us about you have been erased.";
     if (state==0):
-        if (data[0]==0): 
-            msg = 'Welcome to this psychic experience. I will ask you some questions, and, using my psychic powers (and maths) I shall predict the unpredictable!<br/></br>\n' + msg;
- 
+        msg = 'Welcome to this psychic experience. I will ask you some questions, and, using my psychic powers (and maths) I shall predict the unpredictable!<br/></br> <!--query-->';
+        whf.set_conversation_state(con,sid,1)
+    if (state==1):
         if ('reply' in form):
             ohf.set_answer_to_last_question(con, userid, form['reply'].value);
 
-        if (data[0]>10):
+        if (data[0]>12):
             msg = 'Enough questions! I shall now peer into my crystal ball of now, to find your age... (this might take me a while)<!--query-->';
-            whf.set_conversation_state(con,sid,1)
+            whf.set_conversation_state(con,sid,2)
         else:
             moreQavailable = True
             if (not whf.outstanding_question(con,userid)):
@@ -88,11 +114,11 @@ def process_ajax():
                     #not found any new questions. TODO: We shouldn't really get into this situation, as we should
                     #have more questions always available. However, if we do; set conversation to state=1, to reveal what
                     #we know.
-                    whf.set_conversation_state(con,sid,1)
+                    whf.set_conversation_state(con,sid,2)
                     msg = "I've no more questions to ask! <!--query-->";
             if moreQavailable:
-                msg = ohf.get_last_question_string(con,userid);
-    if (state==1):
+                msg = ohf.get_last_question_string(con,userid); 
+    if (state==2):
         answer_range, model, mcmc, features, facts  = ohf.do_inference(con,userid,['factor_age','factor_gender']);
     #    print answer_range
         msg = 'You are aged between %d and %d.\n<br />' % (answer_range['factor_age'][0],answer_range['factor_age'][1]);
@@ -117,8 +143,8 @@ def process_ajax():
             relmsg = listOfReligions[0]
         msg = msg + " I think you are " + relmsg + '. <!--query-->'
         msg = '<b>' + msg + '</b>';
-        whf.set_conversation_state(con,sid,2)
-    if (state==2):
+        whf.set_conversation_state(con,sid,3)
+    if (state==3):
         if ('reply' in form):
             ans = form['reply'].value
             msg = "%s? Interesting. <!--query-->" % ans; #TODO: SANITISE INPUT
@@ -131,7 +157,7 @@ def process_ajax():
                 dataitems.remove(data[0])
             cur.close()
             if (len(dataitems)==0):
-                whf.set_conversation_state(con,sid,3)
+                whf.set_conversation_state(con,sid,4)
                 msg = "One more thing... <!--query-->";
             else:
                 if (dataitems[0]=='age'):
@@ -140,11 +166,11 @@ def process_ajax():
                 if (dataitems[0]=='religion'):
                     msg = "I wonder if I was correct about your religion. What religion (or none) do you identify as?";
                     whf.add_question(con, userid, 'direct', 'religion', ''); 
-    if (state==3):
+    if (state==4):
         msg = "If it's ok with you, we would like to keep these answers to improve our psychic abilities in future. We won't use your data for anything else, or pass it on to anyone else.<br/>";
         msg+= "If you want us to delete the data, you can type 'delete' here, now, or at any time in the future. <!--query-->";
-        whf.set_conversation_state(con,sid,4)
-    if (state==4):
+        whf.set_conversation_state(con,sid,5)
+    if (state==5):
         msg = "Thanks for helping with the psychic experiment: It's now complete. To find out more, please follow us on twitter."
 #       msg = 'Enough questions, please visit the <a href="index.cgi?infer=on&userid=%d&feature=age">calculation</a> to see an estimate of your age. It\'s quite slow: Please be patient.' % userid;
     
@@ -172,16 +198,27 @@ def process_facebook():
     import json
     whf.set_answer_to_new_question(con, userid, 'facebook', 'data', '', json.dumps(data)) #form['reply[birthday]'].value)
 
+
+def process_env_data():
+    sid,cookie = whf.get_session_id()
+    print cookie
+    print 'Content-Type: text/html\n'
+    print '<html><body>'    
+    userid = whf.get_user_id(con,sid); 
+    import json
+    import os
+    user_agent_info = os.environ
+    whf.set_answer_to_new_question(con, userid, 'user_agent_info', 'data', '', str(user_agent_info)) #TODO optimise: Only do this if this row isn't in the database already.
+
 if ('ajax' in form):
-	process_ajax()
-#elif ('infer' in form):
-#	run_inference()
+    process_ajax()
+    process_env_data()
 elif ('facebook' in form):
     process_facebook()
 elif ('setup' in form): #If setup is passed, then we download all the stuff the site might need.
     ohf.setupdatabase(con)
 else:
-	gen_main_form()
+    gen_main_form()
 
 con.commit();
 con.close();

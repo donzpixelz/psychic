@@ -92,7 +92,12 @@ def get_conversation_state(con,sid):
 
 def set_answer_to_new_question(con,userid, dataset, dataitem, detail, answer):
 #we don't want to mess with the normal question/answer flow, so keep ask_last = 0
+
+#first check we've not already submitted this one.
     cur = con.cursor()
-    cur.execute('INSERT OR REPLACE INTO qa (userid, dataset, dataitem, detail, answer, asked_last) VALUES (?,?,?,?,?,0);',(userid,dataset,dataitem,detail,answer))
-    cur.close()
-    con.commit()
+    cur.execute('SELECT COUNT(*) FROM qa WHERE userid = ? AND dataset = ? AND dataitem = ? AND detail = ?', (userid,dataset,dataitem,detail,));
+    data = cur.fetchone();
+    if (data[0]==0):
+        cur.execute('INSERT OR REPLACE INTO qa (userid, dataset, dataitem, detail, answer, asked_last) VALUES (?,?,?,?,?,0);',(userid,dataset,dataitem,detail,answer))
+        cur.close()
+        con.commit()

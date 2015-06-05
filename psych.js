@@ -9,6 +9,21 @@ function opacity_calc() {
         op = op - 0.18;
       }
 }
+
+var keystrokeclockstart = 0;
+var keystrokerecord = [];
+
+function startKeyStrokeClock() {
+  keystrokeclockstart = $.now();
+  keystrokerecord = [];
+}
+
+function recordKey(desc,key) {
+  time = $.now()-keystrokeclockstart;
+  keystrokerecord.push({'event':desc,'key':key,'time':time})
+}
+
+
 function replymsg() {
    timer = setInterval(add_thinking_message, 5000);
    // $('div.loader').css("visibility","visible");
@@ -16,10 +31,11 @@ function replymsg() {
     $.ajax({
 	method: "GET",
 	url: "index.cgi?ajax=on",
-	data: {reply:$('input#chatbox').val()}
+	data: {'reply':$('input#chatbox').val(),keystrokerecord:JSON.stringify(keystrokerecord)}
     })
     .done(function( msg ) {
       clearTimeout(timer);
+      startKeyStrokeClock();
       $('input#chatbox').val(""); //clear the input box
       $('div#conversation').append(msg);
       if ($('div.reply').last().attr('id')==undefined) {
@@ -54,7 +70,7 @@ function add_thinking_message() {
   if (r==1) { msg = 'I\'ve nearly an answer.'; }
   if (r==0) { msg = 'I\'m just thinking...'; }
   $('div#conversation').append('<div class="msg"><span class="innermsg">'+msg+'</span></div>');
-  $('div.msg').last().attr('id','item'+(conversation_item_id+1).toString());
+  $('div.msg').last().attr('id','item'+(conversation_item_id).toString());
   conversation_item_id = conversation_item_id + 1;
   opacity_calc();
 }
@@ -76,11 +92,16 @@ $(document).ready(function() {
  $('button#reply').click(function() {replymsg();});
 //the 'enter' key would normally trigger a submit (if it existed). We're using AJAX and a button, so have to do this manually.
  $("#chatbox").keyup(function(event){
+    recordKey('up',event.keyCode);
     if(event.keyCode == 13){
         $("#reply").click();
     }
  });
+ $("#chatbox").keydown(function(event){
+    recordKey('down',event.keyCode);
+ });
 });
+
 
 $(document).ready(function() {
 /*--------Facebook connection code------*/
@@ -94,18 +115,23 @@ window.fbAsyncInit = function() {
 	function onLogin(response) {
 		if (response.status == 'connected') {
             FB.api('/me?fields=picture', function(data) {
-//                var style = $('<style>div.reply { background-image: url("'+data.picture.data.url+'"); }</style>');
                 var style = $('<style>div.replypic { background-image: url("'+data.picture.data.url+'"); }</style>');
                 $('html > head').append(style);
             });
 			FB.api('/me?fields=first_name', function(data) {
-				var welcomeBlock = document.getElementById('conversation');
-				welcomeBlock.innerHTML = '<div class="msg" id="item0"><span class="innermsg">Hello, ' + data.first_name + '!</span></div><br />';
+				//var welcomeBlock = document.getElementById('conversation');
+                  if (conversation_item_id==0) {
+                    msg = 'Hello, ' + data.first_name + '!';
+                    $('div#conversation').append('<div class="msg"><span class="innermsg">'+msg+'</span></div>');
+                    $('div.msg').last().attr('id','item'+(conversation_item_id).toString());
+                    conversation_item_id = conversation_item_id + 1;
+                  }
 	    		});
 			FB.api('/me', function(data) {
 				    sendfacebook(data);
 	    		});
 	  	}
+       // replymsg();
 	}
 //see https://developers.facebook.com/docs/reference/fql/permissions
 //see https://developers.facebook.com/docs/graph-api/reference/user
